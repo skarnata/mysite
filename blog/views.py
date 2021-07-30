@@ -1,9 +1,12 @@
 from django.shortcuts import render, get_object_or_404
 from .models import Post, Category
-from .forms import NewCommentForm
+from .forms import NewCommentForm, PostSearchForm
 from django.http import HttpResponseRedirect
 from django.views.generic import ListView
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Q
+from django.core import serializers
+from django.http import JsonResponse
 
 
 # Create your views here.
@@ -64,3 +67,41 @@ def category_list(request):
         "category_list": category_list,
     }
     return context
+
+
+def post_search(request):
+    form = PostSearchForm()
+    q = ''
+    c = ''
+    results = []
+    query = Q()
+
+    if request.POST.get('action') == 'post':
+        search_string = str(request.POST.get('ss'))
+
+        if search_string is not None:
+            search_string = Post.objects.filter(
+                title__contains=search_string)[:5]
+
+            data = serializers.serialize('json', list(
+                search_string), fields=('id', 'title', 'slug'))
+
+            return JsonResponse({'search_string': data})
+
+    if 'q' in request.GET:
+        form = PostSearchForm(request.GET)
+        if form.is_valid():
+            q = form.cleaned_data['q']
+            c = form.cleaned_data['c']
+
+            if c is not None:
+                query &= Q(category=c)
+            if q is not None:
+                query &= Q(title__contains=q)
+
+            results = Post.objects.filter(query)
+
+    return render(request, 'blog/search.html',
+                  {'form': form,
+                   'q': q,
+                   'results': results})
